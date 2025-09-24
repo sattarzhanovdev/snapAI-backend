@@ -89,33 +89,22 @@ class AppRating(models.Model):
     
 import uuid
 from django.db import models
-from django.utils import timezone
+
 
 class PendingSignup(models.Model):
-    """
-    Временная сессия регистрации по email-OTP.
-    Совместимо с StartSignupView / VerifySignupView / ResendOTPView.
-    """
-    session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-
+    session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField()
-    username = models.CharField(max_length=150, blank=True, default="")
-    # Пароль храним как sha256 строки пароля (временное хранение до verify)
-    password_sha256 = models.CharField(max_length=128, blank=True, default="")
+    username = models.CharField(max_length=150)
+    password_sha256 = models.CharField(max_length=64)
 
-    locale = models.CharField(max_length=10, blank=True, default="")
-
-    # OTP хранится в виде hash(salt+code)
-    otp_hash = models.CharField(max_length=128)
-    otp_salt = models.CharField(max_length=32)
-    otp_sent_at = models.DateTimeField(default=timezone.now)
-
-    # TTL сессии/кода; выставляется во view при создании
+    otp_hash = models.CharField(max_length=64)
+    otp_salt = models.CharField(max_length=16)
+    otp_sent_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()
-
-    # Защита от брута/спама
-    attempts = models.IntegerField(default=0)   # попытки ввода кода
-    resends = models.IntegerField(default=0)    # количество переотправок
+    resends = models.IntegerField(default=0)  # <— ДОБАВИТЬ
+    
+    attempts = models.IntegerField(default=0)
+    locale = models.CharField(max_length=8, default="ru")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -123,11 +112,5 @@ class PendingSignup(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["email"]),
-            models.Index(fields=["session_id"]),
             models.Index(fields=["expires_at"]),
         ]
-        verbose_name = "Pending signup session"
-        verbose_name_plural = "Pending signup sessions"
-
-    def __str__(self):
-        return f"PendingSignup<{self.email}> {self.session_id}"

@@ -6,6 +6,8 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils.timezone import now
 from rest_framework_simplejwt.tokens import RefreshToken
+import hashlib, secrets
+from django.conf import settings
 
 # ====== SNAP AI: модели / сериализаторы / утилы ======
 from .models import (
@@ -19,7 +21,8 @@ from .serializers import (
 )
 from .utils import plan_from_profile
 from .services.openai_vision import analyze_image
-from .services.emailer import send_otp_email  # простой email-отправитель
+from .services.emailer import send_otp_email_html  # простой email-отправитель
+import base64, re
 
 # ================== PERMISSIONS ==================
 
@@ -101,31 +104,55 @@ class RatingViewSet(viewsets.ModelViewSet):
 
 # ================== AI ANALYZE ==================
 
+# views.py
 class AnalyzePhoto(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        """
-        Принимает multipart/form-data с полем 'image'.
-        Сохраняет Meal, вызывает Vision (через analyze_image(file)) и пишет результат.
-        """
-        file = request.FILES.get("image")
-        if not file:
+        image_file = None
+
+        # вариант 1 — если multipart (FormData)
+        if "image" in request.FILES:
+            image_file = request.FILES["image"]
+
+        # вариант 2 — если base64
+        elif request.data.get("image_base64"):
+            img_str = request.data["image_base64"]
+            # убрать префикс data:image/jpeg;base64,...
+            match = re.match(r"data:image/(?P<ext>\w+);base64,(?P<data>.+)", img_str)
+            if not match:
+                return Response({"detail": "Invalid base64 format"}, status=400)
+
+            ext = match.group("ext")
+            data = match.group("data")
+
+            try:
+                img_bytes = base64.b64decode(data)
+            except Exception:
+                return Response({"detail": "Invalid base64 data"}, status=400)
+
+            # сохранить как InMemoryUploadedFile
+            from django.core.files.base import ContentFile
+            image_file = ContentFile(img_bytes, name=f"upload.{ext}")
+
+        if not image_file:
             return Response({"detail": "image is required"}, status=400)
 
+        # создаём Meal
         meal = Meal.objects.create(
             user=request.user,
             title="",
-            image=file,
-            taken_at=now(),
+            image=image_file,
+            taken_at=now()
         )
 
-        # Важно: используем файл (stream), а не URL — надёжно и на dev/проде.
-        result = analyze_image(file)
+        # запускаем AI-анализ
+        result = analyze_image(meal.image)
 
         if not result:
             return Response({"detail": "AI analysis failed"}, status=502)
 
+        # обновляем объект
         meal.title = result.get("title", "")
         meal.calories = result.get("calories", 0)
         meal.protein_g = result.get("protein_g", 0)
@@ -150,56 +177,63 @@ class StartSignupView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        s = StartSignupSerializer(data=request.data)
-        s.is_valid(raise_exception=True)
-        email = s.validated_data["email"].lower().strip()
-        username = s.validated_data.get("username", "").strip()
-        raw_password = s.validated_data.get("password", "")
-        locale = s.validated_data.get("locale", "ru").strip() or "ru"
+        ser = StartSignupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        email    = ser.validated_data["email"]
+        username = ser.validated_data["username"].strip()
+        password = ser.validated_data["password"]
 
-        # генерим OTP + соль
-        otp = f"{secrets.randbelow(1000000):06d}"
+        # юзер с таким email/username уже есть?
+        if User.objects.filter(username=username).exists():
+            return Response({"detail": "Username already taken"}, status=400)
+        if User.objects.filter(email=email).exists():
+            return Response({"detail": "User with this email already exists"}, status=400)
+
+        # OTP как строка из 6 цифр (с ведущими нулями)
+        otp = f"{random.randint(0, 999999):06d}"
         salt = secrets.token_hex(8)
-        otp_hash = _hash_otp(otp, salt)
-
-        # храним только sha256 пароля до verify
-        pwd_sha256 = hashlib.sha256(raw_password.encode("utf-8")).hexdigest() if raw_password else ""
+        otp_hash = hashlib.sha256((otp + salt).encode("utf-8")).hexdigest()
+        pwd_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
 
         ps = PendingSignup.objects.create(
             email=email,
-            username=username,
-            password_sha256=pwd_sha256,
-            locale=locale,
+            password_sha256=pwd_hash,
             otp_hash=otp_hash,
             otp_salt=salt,
-            otp_sent_at=now(),
-            expires_at=now() + timedelta(minutes=10),
             attempts=0,
-            resends=0,
+            expires_at=timezone.now() + timedelta(minutes=10),
+            locale="ru",
         )
 
-        email_ok = False
+        # Отправка HTML-письма
         try:
-            email_ok = send_otp_email(email, otp)
-        except Exception as e:
-            print("send_otp_email failed:", e)
+            send_otp_email_html(
+                to=email,
+                code=otp,
+                ttl_minutes=10,
+                locale="ru",
+            )
+            email_sent = True
+        except Exception:
+            email_sent = False
+
+        # В DEV режиме помогаем тестить — подсказка/лог
         payload = {
             "session_id": str(ps.session_id),
             "email": email,
-            "email_sent": email_ok,
+            "email_sent": email_sent,
             "ttl_seconds": 600,
         }
-        # Удобный DEV: вернуть OTP сразу в ответе (только в DEBUG)
-        from django.conf import settings as djsettings
-        if djsettings.DEBUG:
-            payload["dev_otp"] = otp
-        return Response(payload, status=201)
+        if settings.DEBUG:
+            payload["debug_hint"] = "DEBUG only: OTP printed in server log"
+            print(f"[DEBUG] OTP for {email}: {otp}")
+
+        return Response(payload, status=200)
 
 class VerifySignupView(APIView):
     """
     POST /api/auth/register/verify/
     body: {session_id, otp, username, password}
-    На успех: выдаёт JWT + создаёт User/Profile.
     """
     permission_classes = [permissions.AllowAny]
 
@@ -207,35 +241,42 @@ class VerifySignupView(APIView):
         ser = VerifySignupSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        sid = ser.validated_data["session_id"]
-        otp = ser.validated_data["otp"]
-        username = ser.validated_data["username"].strip()
-        password = ser.validated_data["password"]
+        session_id = ser.validated_data["session_id"]   # UUID
+        otp        = str(ser.validated_data["otp"])     # строка "012345"
+        username   = ser.validated_data["username"].strip()
+        password   = ser.validated_data["password"]
 
         try:
-            ps = PendingSignup.objects.get(session_id=sid)
+            ps = PendingSignup.objects.get(session_id=session_id)
         except PendingSignup.DoesNotExist:
             return Response({"detail": "Invalid session"}, status=400)
 
+        # TTL
         if timezone.now() > ps.expires_at:
             ps.delete()
             return Response({"detail": "OTP expired"}, status=400)
 
+        # Лимит
         if ps.attempts >= 5:
             ps.delete()
             return Response({"detail": "Too many attempts"}, status=429)
 
-        ps.attempts += 1
-        ps.save(update_fields=["attempts"])
-
-        h = hashlib.sha256((otp + ps.otp_salt).encode()).hexdigest()
-        if not secrets.compare_digest(h, ps.otp_hash):
+        # Проверяем код
+        calc = hashlib.sha256((otp + ps.otp_salt).encode("utf-8")).hexdigest()
+        if not secrets.compare_digest(calc, ps.otp_hash):
+            ps.attempts += 1
+            ps.save(update_fields=["attempts"])
             return Response({"detail": "Invalid code"}, status=400)
 
+        # username/email свободны прямо сейчас?
         if User.objects.filter(username=username).exists():
             return Response({"detail": "Username already taken"}, status=400)
         if User.objects.filter(email=ps.email).exists():
             return Response({"detail": "User with this email already exists"}, status=400)
+
+        # пароль совпадает с тем, что присылали на start?
+        if ps.password_sha256 != hashlib.sha256(password.encode("utf-8")).hexdigest():
+            return Response({"detail": "Password mismatch with initial step"}, status=400)
 
         with transaction.atomic():
             user = User.objects.create_user(username=username, email=ps.email, password=password)
@@ -281,7 +322,7 @@ class ResendOTPView(APIView):
         ps.save(update_fields=["otp_salt", "otp_hash", "otp_sent_at", "resends"])
 
         try:
-            send_otp_email(ps.email, code, app_name="Snap AI")
+            send_otp_email_html(ps.email, code, app_name="Snap AI")
         except Exception:
             return Response({"detail": "Failed to send OTP"}, status=502)
 

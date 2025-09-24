@@ -1,19 +1,23 @@
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
+import logging
 
-def send_otp_email(to_email: str, otp: str):
-    subject = "Код подтверждения"
-    from_email = settings.DEFAULT_FROM_EMAIL
+logger = logging.getLogger(__name__)
 
-    # простой текст (fallback, если у клиента нет HTML)
-    text_content = f"Ваш код подтверждения: {otp}\nКод действует 10 минут."
-
-    # HTML версия
-    html_content = f"""
-        <p>Ваш код подтверждения: <b>{otp}</b></p>
-        <p>Код действует 10 минут.</p>
-    """
-
-    msg = EmailMultiAlternatives(subject, text_content, from_email, [to_email])
-    msg.attach_alternative(html_content, "text/html")
-    msg.send()
+def send_otp_email_html(email, otp, ttl_minutes=10):
+    subject = "Ваш код подтверждения"
+    text_body = f"Ваш код: {otp}. Действует {ttl_minutes} мин."
+    html_body = f"Ваш код подтверждения: <b>{otp}</b><br/>Код действует {ttl_minutes} минут."
+    try:
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[email],
+        )
+        msg.attach_alternative(html_body, "text/html")
+        msg.send()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при отправке письма: {e}")
+        return False
