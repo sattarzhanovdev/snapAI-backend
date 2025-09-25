@@ -174,6 +174,9 @@ def _hash_otp(code: str, salt: str) -> str:
     return hashlib.sha256((salt + code).encode("utf-8")).hexdigest()
 
 class StartSignupView(APIView):
+    """
+        post {email, username, password}
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
