@@ -1,31 +1,88 @@
+from __future__ import annotations
+import uuid
+import hashlib
+import secrets
+from datetime import timedelta
+
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
-from django.contrib.auth.models import User
+from django.utils import timezone
+
+
+# ========= Custom User (email-only) =========
+
+class UserManager(BaseUserManager):
+    use_in_migrations = True
+
+    def create_user(self, email: str, password: str | None = None, **extra_fields):
+        if not email:
+            raise ValueError("Email is required")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email: str, password: str | None = None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
+    username = None  # <— убираем username
+    email = models.EmailField(unique=True)
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS: list[str] = []
+
+    objects = UserManager()
+
+    def __str__(self):
+        return self.email
+
+
+# ========= Enums =========
 
 class Gender(models.TextChoices):
     MALE = "male", "Male"
     FEMALE = "female", "Female"
     OTHER = "other", "Other"
 
+
 class UnitsSystem(models.TextChoices):
-    METRIC = "metric", "Metric"  # kg, cm
-    IMPERIAL = "imperial", "Imperial"  # lbs, ft/in
+    METRIC = "metric", "Metric"       # kg, cm
+    IMPERIAL = "imperial", "Imperial" # lbs, ft/in
+
 
 class ActivityLevel(models.TextChoices):
     SEDENTARY = "sedentary", "Sedentary"
     NORMAL = "normal", "Normal"
     ACTIVE = "active", "Active"
 
+
 class GoalType(models.TextChoices):
     LOSE = "lose", "Lose weight"
     MAINTAIN = "maintain", "Maintain"
     GAIN = "gain", "Gain weight"
 
+
+# ========= Core models =========
+
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     gender = models.CharField(max_length=16, choices=Gender.choices, default=Gender.OTHER)
     date_of_birth = models.DateField(null=True, blank=True)
 
-    # единицы/значения роста/веса при онбординге
     units = models.CharField(max_length=16, choices=UnitsSystem.choices, default=UnitsSystem.METRIC)
     height_cm = models.FloatField(null=True, blank=True)
     weight_kg = models.FloatField(null=True, blank=True)
@@ -43,10 +100,11 @@ class UserProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Profile({self.user.username})"
+        return f"Profile({self.user.email})"
+
 
 class NutritionPlan(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="plan")
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="plan")
     calories = models.IntegerField(default=0)
     protein_g = models.IntegerField(default=0)
     fat_g = models.IntegerField(default=0)
@@ -54,10 +112,11 @@ class NutritionPlan(models.Model):
     generated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Plan({self.user.username})"
+        return f"Plan({self.user.email})"
+
 
 class Meal(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="meals")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="meals")
     taken_at = models.DateTimeField(auto_now_add=True)
 
     title = models.CharField(max_length=160, blank=True)
@@ -69,40 +128,42 @@ class Meal(models.Model):
     carbs_g = models.IntegerField(default=0)
     servings = models.FloatField(default=1.0)
 
-    # список ингредиентов и произвольные данные анализа (метки, health score)
     ingredients = models.JSONField(default=list, blank=True)
     meta = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
-        return f"Meal({self.user.username}, {self.title or 'untitled'})"
+        return f"Meal({self.user.email}, {self.title or 'untitled'})"
+
 
 class AppRating(models.Model):
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    stars = models.IntegerField()  # 1..5
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    stars = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     comment = models.TextField(blank=True, default="")
-    sent_to_store = models.BooleanField(default=False)  # если 4–5, фронт может попытаться отправить в стор
+    sent_to_store = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Rating({self.stars})"
-    
-    
-import uuid
-from django.db import models
+
+
+# ========= Pending signup & OTP =========
+
+def _sha256_hex(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 class PendingSignup(models.Model):
     session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     email = models.EmailField()
-    username = models.CharField(max_length=150)
     password_sha256 = models.CharField(max_length=64)
 
     otp_hash = models.CharField(max_length=64)
     otp_salt = models.CharField(max_length=16)
     otp_sent_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()
-    resends = models.IntegerField(default=0)  # <— ДОБАВИТЬ
-    
+    resends = models.IntegerField(default=0)
+
     attempts = models.IntegerField(default=0)
     locale = models.CharField(max_length=8, default="ru")
 
@@ -114,3 +175,35 @@ class PendingSignup(models.Model):
             models.Index(fields=["email"]),
             models.Index(fields=["expires_at"]),
         ]
+
+    @classmethod
+    def make_otp(cls, digits: int = 6) -> str:
+        return "".join(secrets.choice("0123456789") for _ in range(digits))
+
+    @classmethod
+    def hash_otp(cls, otp: str, salt: str) -> str:
+        return _sha256_hex(f"{salt}:{otp}")
+
+    @classmethod
+    def new(cls, email: str, password_sha256: str, ttl_minutes: int = 10) -> "PendingSignup":
+        salt = secrets.token_hex(8)
+        otp = cls.make_otp(6)
+        now = timezone.now()
+        ps = cls.objects.create(
+            email=email.lower().strip(),
+            password_sha256=password_sha256,
+            otp_hash=cls.hash_otp(otp, salt),
+            otp_salt=salt,
+            otp_sent_at=now,
+            expires_at=now + timedelta(minutes=ttl_minutes),
+        )
+        ps._raw_otp = otp  # временно, чтобы выслать по почте/смс вне транзакции
+        return ps
+
+    def verify_and_consume(self, otp: str) -> bool:
+        if timezone.now() > self.expires_at:
+            return False
+        ok = self.otp_hash == self.hash_otp(otp, self.otp_salt)
+        self.attempts += 1
+        self.save(update_fields=["attempts", "updated_at"])
+        return ok

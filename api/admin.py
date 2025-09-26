@@ -1,7 +1,56 @@
 from django.contrib import admin
-from .models import UserProfile, NutritionPlan, Meal, AppRating
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-admin.site.register(UserProfile)
-admin.site.register(NutritionPlan)
-admin.site.register(Meal)
-admin.site.register(AppRating)
+from .models import User, UserProfile, NutritionPlan, Meal, AppRating, PendingSignup
+
+
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin):
+    model = User
+    list_display = ("id", "email", "is_active", "is_staff", "is_superuser", "date_joined", "last_login")
+    list_filter = ("is_active", "is_staff", "is_superuser")
+    ordering = ("-date_joined",)
+    search_fields = ("email",)
+    fieldsets = (
+        (None, {"fields": ("email", "password")}),
+        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
+        ("Important dates", {"fields": ("last_login", "date_joined")}),
+    )
+    add_fieldsets = (
+        (None, {
+            "classes": ("wide",),
+            "fields": ("email", "password1", "password2", "is_staff", "is_superuser", "is_active"),
+        }),
+    )
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "gender", "units", "activity", "goal", "has_premium")
+    search_fields = ("user__email",)
+
+
+@admin.register(NutritionPlan)
+class NutritionPlanAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "calories", "protein_g", "fat_g", "carbs_g", "generated_at")
+    search_fields = ("user__email",)
+
+
+@admin.register(Meal)
+class MealAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "title", "calories", "taken_at")
+    search_fields = ("user__email", "title")
+
+
+@admin.register(AppRating)
+class AppRatingAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "stars", "sent_to_store", "created_at")
+    list_filter = ("sent_to_store", "stars")
+    search_fields = ("user__email", "comment")
+
+
+@admin.register(PendingSignup)
+class PendingSignupAdmin(admin.ModelAdmin):
+    list_display = ("session_id", "email", "otp_sent_at", "expires_at", "resends", "attempts", "created_at")
+    search_fields = ("email",)
+    readonly_fields = ("session_id", "otp_hash", "otp_salt", "created_at", "updated_at")
