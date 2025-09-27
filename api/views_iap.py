@@ -7,6 +7,13 @@ from django.utils import timezone
 
 from .models import PaymentReceiptIOS, Entitlement
 from .serializers import IOSReceiptInSerializer
+from drf_spectacular.utils import extend_schema
+
+
+@extend_schema(
+    request=IOSReceiptInSerializer,
+    responses={200: dict},
+)
 
 class IOSReceiptIngestView(APIView):
     """
