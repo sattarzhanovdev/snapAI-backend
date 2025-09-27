@@ -2,6 +2,7 @@ from __future__ import annotations
 import uuid
 import hashlib
 import secrets
+import os
 from datetime import timedelta
 
 from django.conf import settings
@@ -154,56 +155,60 @@ def _sha256_hex(s: str) -> str:
 
 class PendingSignup(models.Model):
     session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    email = models.EmailField()
+    email = models.EmailField(db_index=True)
     password_sha256 = models.CharField(max_length=64)
 
+    otp_salt = models.CharField(max_length=32)
     otp_hash = models.CharField(max_length=64)
-    otp_salt = models.CharField(max_length=16)
-    otp_sent_at = models.DateTimeField(null=True, blank=True)
+    otp_sent_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
-    resends = models.IntegerField(default=0)
 
-    attempts = models.IntegerField(default=0)
-    locale = models.CharField(max_length=8, default="ru")
+    attempts = models.PositiveIntegerField(default=0)
+    resends = models.PositiveIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        indexes = [
-            models.Index(fields=["email"]),
-            models.Index(fields=["expires_at"]),
-        ]
+    # Длина OTP по умолчанию — 4 (можно задать в .env OTP_LENGTH=4)
+    OTP_LENGTH = int(os.getenv("OTP_LENGTH", 4))
+
+    locale = models.CharField(max_length=8, default="ru")  # <-- дефолт
+
+    def __str__(self):
+        return f"{self.email} • {self.session_id}"
+
+    # ----- helpers -----
+    @staticmethod
+    def make_otp(n: int | None = None) -> str:
+        n = n or PendingSignup.OTP_LENGTH
+        return "".join(secrets.choice("0123456789") for _ in range(n))
+
+    @staticmethod
+    def hash_otp(code: str, salt: str) -> str:
+        return hashlib.sha256((code + salt).encode("utf-8")).hexdigest()
 
     @classmethod
-    def make_otp(cls, digits: int = 6) -> str:
-        return "".join(secrets.choice("0123456789") for _ in range(digits))
-
-    @classmethod
-    def hash_otp(cls, otp: str, salt: str) -> str:
-        return _sha256_hex(f"{salt}:{otp}")
-
-    @classmethod
-    def new(cls, email: str, password_sha256: str, ttl_minutes: int = 10) -> "PendingSignup":
+    def new(cls, email: str, password_sha256: str, ttl_minutes: int = 10,
+            otp_len: int | None = None, locale: str = "ru"):
+        code = cls.make_otp(otp_len)
         salt = secrets.token_hex(8)
-        otp = cls.make_otp(6)
-        now = timezone.now()
-        ps = cls.objects.create(
-            email=email.lower().strip(),
+        otp_hash = cls.hash_otp(code, salt)
+        obj = cls(
+            email=email,
             password_sha256=password_sha256,
-            otp_hash=cls.hash_otp(otp, salt),
             otp_salt=salt,
-            otp_sent_at=now,
-            expires_at=now + timedelta(minutes=ttl_minutes),
+            otp_hash=otp_hash,
+            otp_sent_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
+            locale=locale,  # <-- записали
         )
-        ps._raw_otp = otp  # временно, чтобы выслать по почте/смс вне транзакции
-        return ps
-
-    def verify_and_consume(self, otp: str) -> bool:
-        if timezone.now() > self.expires_at:
-            return False
-        ok = self.otp_hash == self.hash_otp(otp, self.otp_salt)
+        obj.save()
+        obj._raw_otp = code
+        return obj
+    
+    def verify_and_consume(self, code: str) -> bool:
+        """Проверяет код и инкрементит attempts. Возвращает True/False."""
         self.attempts += 1
+        ok = (self.hash_otp(code, self.otp_salt) == self.otp_hash)
         self.save(update_fields=["attempts", "updated_at"])
         return ok

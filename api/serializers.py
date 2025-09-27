@@ -52,6 +52,8 @@ class AppRatingSerializer(serializers.ModelSerializer):
 
 # ===== OTP Signup flow (email-only) =====
 
+OTP_LENGTH = 4
+
 class StartSignupSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(min_length=6, max_length=128, write_only=True)
@@ -66,9 +68,12 @@ class StartSignupSerializer(serializers.Serializer):
 
 class VerifySignupSerializer(serializers.Serializer):
     session_id = serializers.UUIDField()
-    otp = serializers.RegexField(r"^\d{6}$", min_length=6, max_length=6)
-    password = serializers.CharField(min_length=6, max_length=128, write_only=True)
-
-
+    otp = serializers.RegexField(fr"^\d{{{OTP_LENGTH}}}$")
+    password = serializers.CharField(min_length=6)
+    
 class ResendOTPSerializer(serializers.Serializer):
     session_id = serializers.UUIDField()
+
+
+class SocialIDTokenSerializer(serializers.Serializer):
+    id_token = serializers.CharField()

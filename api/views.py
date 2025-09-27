@@ -179,9 +179,17 @@ class StartSignupView(APIView):
         if User.objects.filter(email=email).exists():
             return Response({"detail": "User with this email already exists"}, status=400)
 
-        ps = PendingSignup.new(email=email, password_sha256=_sha256(password), ttl_minutes=10)
+        # возьмём локаль из тела (если пришла) или из заголовка, иначе ru
+        locale = (request.data.get("locale")
+                  or request.headers.get("Accept-Language", "ru"))[:8] or "ru"
 
-        # Отправка письма с OTP
+        ps = PendingSignup.new(
+            email=email,
+            password_sha256=_sha256(password),
+            ttl_minutes=10,
+            locale=locale,  # <-- передали
+        )
+
         try:
             email_sent = send_otp_email_html(email=email, otp=ps._raw_otp, ttl_minutes=10)
         except Exception:
@@ -277,7 +285,7 @@ class ResendOTPView(APIView):
         ttl_minutes_left = max(1, ttl_seconds_left // 60)
 
         # Генерируем новый код и сохраняем
-        code = PendingSignup.make_otp(6)
+        code = PendingSignup.make_otp(4)
         ps.otp_salt = secrets.token_hex(8)
         ps.otp_hash = PendingSignup.hash_otp(code, ps.otp_salt)
         ps.otp_sent_at = timezone.now()
