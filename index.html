@@ -46,10 +46,11 @@
 
 <script>
   const API_BASE = "http://127.0.0.1:8000/api/auth"; // твой DRF API
+  // const API_BASE = "https://snapaibackend.pythonanywhere.com/api/auth"; // твой DRF API
 
   window.onload = function() {
     google.accounts.id.initialize({
-      client_id: "476536036663-lbv0ihfah3puuho67ftf9nh2sajircth.apps.googleusercontent.com",
+      client_id: "476536036663-k08dqj4dg9t4io45lk3qokg75vjmfh2j.apps.googleusercontent.com",
       callback: (resp) => {
         const id_token = resp.credential;
         log("Google id_token: " + id_token.substring(0, 40) + "...");
