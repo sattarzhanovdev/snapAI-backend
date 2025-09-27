@@ -212,3 +212,77 @@ class PendingSignup(models.Model):
         ok = (self.hash_otp(code, self.otp_salt) == self.otp_hash)
         self.save(update_fields=["attempts", "updated_at"])
         return ok
+    
+    
+
+class ReceiptStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    VERIFIED = "verified", "Verified"
+    REJECTED = "rejected", "Rejected"
+
+
+class PaymentReceiptIOS(models.Model):
+    """
+    Квитанция (чек) из iOS-приложения.
+    Сохраняем исходные данные, чтобы потом верифицировать через App Store Server API.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="ios_receipts")
+
+    # что купили
+    product_id = models.CharField(max_length=128)  # напр. com.snapai.pro.month
+
+    # главный идентификатор подписки в App Store
+    original_transaction_id = models.CharField(max_length=128, db_index=True)
+
+    # необязательные/служебные поля
+    transaction_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    bundle_id = models.CharField(max_length=256, blank=True, default="")           # на всякий
+    app_account_token = models.CharField(max_length=64, blank=True, default="")    # UUID, если используешь
+
+    # «сырой» payload для повторной проверки (лучше JSON)
+    raw_payload = models.JSONField(blank=True, null=True)  # можешь слать весь транзакшн
+
+    # статус и сроки
+    status = models.CharField(max_length=16, choices=ReceiptStatus.choices, default=ReceiptStatus.PENDING)
+    status_reason = models.TextField(blank=True, default="")
+    expires_at = models.DateTimeField(blank=True, null=True)  # если подписка
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user"]),
+            models.Index(fields=["original_transaction_id"]),
+            models.Index(fields=["transaction_id"]),
+        ]
+
+    def mark_verified(self, expires_at=None):
+        self.status = ReceiptStatus.VERIFIED
+        self.verified_at = timezone.now()
+        if expires_at:
+            self.expires_at = expires_at
+        self.save(update_fields=["status", "verified_at", "expires_at"])
+
+    def mark_rejected(self, reason: str):
+        self.status = ReceiptStatus.REJECTED
+        self.status_reason = reason[:2000]
+        self.verified_at = timezone.now()
+        self.save(update_fields=["status", "status_reason", "verified_at"])
+
+
+class Entitlement(models.Model):
+    """
+    Текущее состояние доступа пользователя.
+    Обновляешь это после успешной проверки чека (или по вебхукам от Apple).
+    """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="entitlement")
+    product_id = models.CharField(max_length=128, blank=True, default="")
+    original_transaction_id = models.CharField(max_length=128, blank=True, default="")
+    expires_at = models.DateTimeField(blank=True, null=True)
+    is_active = models.BooleanField(default=False)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Entitlement({self.user.email}, active={self.is_active})"

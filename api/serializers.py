@@ -77,3 +77,12 @@ class ResendOTPSerializer(serializers.Serializer):
 
 class SocialIDTokenSerializer(serializers.Serializer):
     id_token = serializers.CharField()
+    
+
+class IOSReceiptInSerializer(serializers.Serializer):
+    product_id = serializers.CharField(max_length=128)
+    original_transaction_id = serializers.CharField(max_length=128)
+    transaction_id = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    bundle_id = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    app_account_token = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    raw_payload = serializers.JSONField(required=False)

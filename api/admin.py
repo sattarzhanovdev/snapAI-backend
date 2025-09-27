@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import User, UserProfile, NutritionPlan, Meal, AppRating, PendingSignup
+from .models import User, UserProfile, NutritionPlan, Meal, AppRating, PendingSignup, PaymentReceiptIOS, Entitlement
 
 
 @admin.register(User)
@@ -54,3 +54,17 @@ class PendingSignupAdmin(admin.ModelAdmin):
     list_display = ("session_id", "email", "otp_sent_at", "expires_at", "resends", "attempts", "created_at")
     search_fields = ("email",)
     readonly_fields = ("session_id", "otp_hash", "otp_salt", "created_at", "updated_at")
+
+
+
+@admin.register(PaymentReceiptIOS)
+class PaymentReceiptIOSAdmin(admin.ModelAdmin):
+    list_display = ("user", "product_id", "original_transaction_id", "status", "expires_at", "created_at")
+    search_fields = ("user__email", "original_transaction_id", "transaction_id", "product_id")
+    list_filter = ("status",)
+
+@admin.register(Entitlement)
+class EntitlementAdmin(admin.ModelAdmin):
+    list_display = ("user", "product_id", "is_active", "expires_at", "updated_at")
+    search_fields = ("user__email", "product_id", "original_transaction_id")
+    list_filter = ("is_active",)

@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import ProfileViewSet, MealViewSet, PlanViewSet, RatingViewSet, AnalyzePhoto, StartSignupView, VerifySignupView, ResendOTPView
 from .views_auth_social import GoogleLoginView, AppleLoginView
+from .views_iap import IOSReceiptIngestView
 
 router = DefaultRouter()
 router.register(r"profile", ProfileViewSet, basename="profile")
@@ -20,5 +21,6 @@ urlpatterns = [
     path("analyze/", AnalyzePhoto.as_view(), name="analyze_stub"),
     path("api/auth/google/", GoogleLoginView.as_view(), name="auth-google"),
     path("api/auth/apple/", AppleLoginView.as_view(), name="auth-apple"),
+    path("iap/apple/ingest/", IOSReceiptIngestView.as_view()),
     path("", include(router.urls)),
 ]
