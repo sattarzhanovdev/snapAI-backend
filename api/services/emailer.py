@@ -16,8 +16,8 @@ def send_otp_email_html(email, otp, ttl_minutes=10):
             to=[email],
         )
         msg.attach_alternative(html_body, "text/html")
-        msg.send()
+        msg.send(fail_silently=False)        # <— важно
         return True
-    except Exception as e:
-        logger.error(f"Ошибка при отправке письма: {e}")
+    except Exception:
+        logger.exception("Ошибка при отправке письма")  # выведет стек
         return False

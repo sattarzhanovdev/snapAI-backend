@@ -3,9 +3,9 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")   # <— вместо просто load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe")
 DEBUG = os.getenv("DEBUG", "True") == "True"
