@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
+
 # ================== PERMISSIONS ==================
 
 class IsOwner(permissions.BasePermission):
@@ -253,10 +254,6 @@ class VerifySignupView(APIView):
 
 
 class ResendOTPView(APIView):
-    """
-    POST /api/auth/register/resend/
-    body: { session_id }
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -275,6 +272,11 @@ class ResendOTPView(APIView):
         if ps.resends >= 3:
             return Response({"detail": "Resend limit reached"}, status=429)
 
+        # Сколько осталось жить коду — передадим в письмо
+        ttl_seconds_left = int((ps.expires_at - timezone.now()).total_seconds())
+        ttl_minutes_left = max(1, ttl_seconds_left // 60)
+
+        # Генерируем новый код и сохраняем
         code = PendingSignup.make_otp(6)
         ps.otp_salt = secrets.token_hex(8)
         ps.otp_hash = PendingSignup.hash_otp(code, ps.otp_salt)
@@ -282,9 +284,27 @@ class ResendOTPView(APIView):
         ps.resends += 1
         ps.save(update_fields=["otp_salt", "otp_hash", "otp_sent_at", "resends", "updated_at"])
 
+        # ВАЖНО: без locale
         try:
-            send_otp_email_html(ps.email, code, ttl_minutes=10, locale="ru")
-        except Exception:
-            return Response({"detail": "Failed to send OTP"}, status=502)
+            ok = send_otp_email_html(email=ps.email, otp=code, ttl_minutes=ttl_minutes_left)
+            if not ok:
+                # на всякий случай логируем
+                logger.error("send_otp_email_html returned False for %s", ps.email)
+                return Response({"detail": "Failed to send OTP"}, status=502)
+        except Exception as e:
+            logger.exception("Resend OTP failed")
+            payload = {"detail": "Failed to send OTP"}
+            if settings.DEBUG:
+                payload["debug_hint"] = str(e)
+            return Response(payload, status=502)
 
-        return Response({"ok": True})
+        resp = {
+            "ok": True,
+            "ttl_seconds_left": ttl_seconds_left,
+            "resends_used": ps.resends,
+            "resends_left": max(0, 3 - ps.resends),
+        }
+        if settings.DEBUG:
+            resp["debug_hint"] = "OTP re-sent (check email/logs)"
+
+        return Response(resp, status=200)
