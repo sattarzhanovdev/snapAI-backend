@@ -21,7 +21,8 @@ from .serializers import (
 from .utils import plan_from_profile
 from .services.openai_vision import analyze_image
 from .services.emailer import send_otp_email_html
-
+import logging
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -166,10 +167,6 @@ def _sha256(s: str) -> str:
 
 
 class StartSignupView(APIView):
-    """
-    POST /api/auth/register/start/
-    body: { email, password }
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -184,11 +181,10 @@ class StartSignupView(APIView):
         ps = PendingSignup.new(email=email, password_sha256=_sha256(password), ttl_minutes=10)
 
         # Отправка письма с OTP
-        email_sent = False
         try:
-            send_otp_email_html(to=email, code=ps._raw_otp, ttl_minutes=10, locale="ru")
-            email_sent = True
+            email_sent = send_otp_email_html(email=email, otp=ps._raw_otp, ttl_minutes=10)
         except Exception:
+            logger.exception("OTP email send failed")
             email_sent = False
 
         payload = {

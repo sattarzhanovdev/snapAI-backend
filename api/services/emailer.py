@@ -1,10 +1,10 @@
+# mailer.py
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 import logging
-
 logger = logging.getLogger(__name__)
 
-def send_otp_email_html(email, otp, ttl_minutes=10):
+def send_otp_email_html(email: str, otp: str, ttl_minutes: int = 10) -> tuple[bool, str|None]:
     subject = "Ваш код подтверждения"
     text_body = f"Ваш код: {otp}. Действует {ttl_minutes} мин."
     html_body = f"Ваш код подтверждения: <b>{otp}</b><br/>Код действует {ttl_minutes} минут."
@@ -16,8 +16,8 @@ def send_otp_email_html(email, otp, ttl_minutes=10):
             to=[email],
         )
         msg.attach_alternative(html_body, "text/html")
-        msg.send(fail_silently=False)        # <— важно
-        return True
-    except Exception:
-        logger.exception("Ошибка при отправке письма")  # выведет стек
-        return False
+        sent = msg.send(fail_silently=False)  # вернёт 1 при успехе
+        return (sent == 1, None)
+    except Exception as e:
+        logger.exception("Ошибка при отправке OTP")
+        return (False, str(e))

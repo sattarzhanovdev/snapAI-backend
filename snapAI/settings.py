@@ -1,8 +1,12 @@
-import os
+import os, logging
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
+logging.getLogger(__name__).warning(
+    "EMAIL_BACKEND=%s; EMAIL_HOST_USER=%s",
+    os.getenv("EMAIL_BACKEND"), os.getenv("EMAIL_HOST_USER")
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")   # <— вместо просто load_dotenv()
