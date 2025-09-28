@@ -29,7 +29,6 @@ services:
       - internal
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../../index.html:/usr/share/nginx/html/index.html:ro
       - media_volume:/app/media
       - static_volume:/app/static
     depends_on:
