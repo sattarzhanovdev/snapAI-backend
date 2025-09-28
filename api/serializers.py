@@ -21,7 +21,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            "user", "gender", "date_of_birth", "units",
+            "id", "user", "gender", "date_of_birth", "units",
             "height_cm", "weight_kg", "activity", "goal",
             "desired_weight_kg", "allergies", "has_premium", "trial_ends_at",
             "created_at", "updated_at",
