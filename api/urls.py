@@ -19,8 +19,8 @@ urlpatterns = [
     path("auth/register/verify/", VerifySignupView.as_view(), name="register_verify"),
     path("auth/register/resend/", ResendOTPView.as_view(), name="register_resend"),
     path("analyze/", AnalyzePhoto.as_view(), name="analyze_stub"),
-    path("api/auth/google/", GoogleLoginView.as_view(), name="auth-google"),
-    path("api/auth/apple/", AppleLoginView.as_view(), name="auth-apple"),
+    path("auth/google/", GoogleLoginView.as_view(), name="auth-google"),
+    path("auth/apple/", AppleLoginView.as_view(), name="auth-apple"),
     path("iap/apple/ingest/", IOSReceiptIngestView.as_view()),
     path("", include(router.urls)),
 ]
