@@ -110,6 +110,8 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if os.getenv("CORS_ALLOWED_ORIGINS") else []
 CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
+CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else []
+
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = os.getenv("TIME_ZONE", "UTC")
 USE_I18N = USE_TZ = True
