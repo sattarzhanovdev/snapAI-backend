@@ -73,7 +73,7 @@ WSGI_APPLICATION = "snapAI.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": BASE_DIR / "db" / "db.sqlite3",
     }
 }
 
@@ -130,3 +130,9 @@ else:
     # Dev: письма не отправляются, а печатаются в консоль/логи
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "dev@localhost")
+
+
+# --- SUPERUSER ---
+SUPERUSER_EMAIL = os.getenv('SUPERUSER_EMAIL', 'admin@example.com')
+SUPERUSER_PASSWORD = os.getenv('SUPERUSER_PASSWORD', 'Admin_333')
+

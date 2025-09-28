@@ -20,4 +20,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 
 # Run server
-CMD ["uv", "run", "gunicorn", "snapAI.wsgi:application", "--workers", "2", "--bind", "0.0.0.0:8000"]
+COPY ./entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]

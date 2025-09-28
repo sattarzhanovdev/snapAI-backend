@@ -4,6 +4,8 @@ networks:
 
 volumes:
   media_volume:
+  static_volume:
+  sqlite_volume:
 
 services:
   backend:
@@ -13,6 +15,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - media_volume:/app/media
+      - static_volume:/app/static
+      - sqlite_volume:/app/db
     expose:
       - 8000
     networks:
@@ -31,5 +35,6 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ../../index.html:/usr/share/nginx/html/index.html:ro
       - media_volume:/app/media
+      - static_volume:/app/static
     depends_on:
       - backend
