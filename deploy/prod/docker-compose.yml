@@ -17,8 +17,7 @@ services:
       - 8000
     networks:
       - internal
-    environment:
-      - /etc/snap-ai/.env
+    env_file: /etc/snap-ai/.env
 
   nginx:
     image: nginx:latest
