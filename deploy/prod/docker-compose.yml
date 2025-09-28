@@ -1,0 +1,36 @@
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  media_volume:
+
+services:
+  backend:
+    container_name: backend
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    volumes:
+      - media_volume:/app/media
+    expose:
+      - 8000
+    networks:
+      - internal
+    environment:
+      - /etc/snap-ai/.env
+
+  nginx:
+    image: nginx:latest
+    networks:
+      - internal
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ../../index.html:/usr/share/nginx/html/index.html:ro
+      - media_volume:/app/media
+    depends_on:
+      - backend
