@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import User, UserProfile, NutritionPlan, Meal, AppRating, PendingSignup, PaymentReceiptIOS, Entitlement
+from .models import User, UserProfile, NutritionPlan, Meal, AppRating, PendingSignup, PaymentReceiptIOS, Entitlement, Report
 
 
 @admin.register(User)
@@ -68,3 +68,11 @@ class EntitlementAdmin(admin.ModelAdmin):
     list_display = ("user", "product_id", "is_active", "expires_at", "updated_at")
     search_fields = ("user__email", "product_id", "original_transaction_id")
     list_filter = ("is_active",)
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "phone_number", "user", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("name", "phone_number", "comment", "user__email")
+    readonly_fields = ("created_at",)

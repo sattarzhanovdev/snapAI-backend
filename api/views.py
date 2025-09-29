@@ -13,15 +13,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import UserProfile, Meal, NutritionPlan, AppRating, PendingSignup
+from .models import UserProfile, Meal, NutritionPlan, AppRating, PendingSignup, Report
 from .serializers import (
     UserProfileSerializer, MealSerializer, NutritionPlanSerializer, AppRatingSerializer,
-    StartSignupSerializer, VerifySignupSerializer, ResendOTPSerializer,
+    StartSignupSerializer, VerifySignupSerializer, ResendOTPSerializer, ReportSerializer
 )
+from django.core.files.base import ContentFile
 from .utils import plan_from_profile
 from .services.openai_vision import analyze_image
 from .services.emailer import send_otp_email_html
 import logging
+
+from rest_framework.exceptions import ValidationError
+
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
@@ -358,3 +362,55 @@ class ResendOTPView(APIView):
             resp["debug_hint"] = "OTP re-sent (check email/logs)"
 
         return Response(resp, status=200)
+    
+    
+
+class IsOwnerOrStaff(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return request.user and (request.user.is_staff or obj.user == request.user)
+
+class ReportViewSet(viewsets.GenericViewSet,
+                    mixins.CreateModelMixin,
+                    mixins.ListModelMixin,
+                    mixins.RetrieveModelMixin):
+    serializer_class = ReportSerializer
+    queryset = Report.objects.all()
+
+    def get_permissions(self):
+        # Создавать (оставлять заявку) можно всем.
+        if self.action == "create":
+            return [permissions.AllowAny()]
+        # Смотреть — только аутентифицированным (свои) или стаффу (все).
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_authenticated and user.is_staff:
+            return Report.objects.all().order_by("-created_at")
+        if user.is_authenticated:
+            return Report.objects.filter(user=user).order_by("-created_at")
+        # анонимам список не даём
+        return Report.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+
+        # Поддержка base64-картинки
+        if "photo_base64" in data and not data.get("photo"):
+            img_str = data.pop("photo_base64")
+            if img_str:
+                match = re.match(r"data:image/(?P<ext>\w+);base64,(?P<data>.+)", img_str)
+                if not match:
+                    raise ValidationError({"photo_base64": "Invalid base64 format"})
+                ext = match.group("ext")
+                try:
+                    img_bytes = base64.b64decode(match.group("data"))
+                except Exception:
+                    raise ValidationError({"photo_base64": "Invalid base64 data"})
+                data["photo"] = ContentFile(img_bytes, name=f"report.{ext}")
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        instance: Report = serializer.save(user=request.user if request.user.is_authenticated else None)
+        headers = self.get_success_headers(serializer.data)
+        return Response(ReportSerializer(instance).data, status=201, headers=headers)

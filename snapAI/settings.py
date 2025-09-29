@@ -37,6 +37,8 @@ INSTALLED_APPS = [
 
 AUTH_USER_MODEL = "api.User"   # или "accounts.User", если приложение называется иначе
 
+DB_DIR = BASE_DIR / "db"
+DB_DIR.mkdir(parents=True, exist_ok=True)  # авто-создание папки
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -70,10 +72,11 @@ TEMPLATES = [
 WSGI_APPLICATION = "snapAI.wsgi.application"
 
 # ——— База (SQLite) ———
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db" / "db.sqlite3",
+        "NAME": DB_DIR / "db.sqlite3",
     }
 }
 

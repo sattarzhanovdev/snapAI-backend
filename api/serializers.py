@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import UserProfile, Meal, NutritionPlan, AppRating, PendingSignup
+from .models import UserProfile, Meal, NutritionPlan, AppRating, PendingSignup, Report
 
 User = get_user_model()
 
@@ -86,3 +86,10 @@ class IOSReceiptInSerializer(serializers.Serializer):
     bundle_id = serializers.CharField(max_length=256, required=False, allow_blank=True)
     app_account_token = serializers.CharField(max_length=64, required=False, allow_blank=True)
     raw_payload = serializers.JSONField(required=False)
+    
+    
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ("id", "user", "name", "phone_number", "comment", "photo", "created_at")
+        read_only_fields = ("id", "user", "created_at")

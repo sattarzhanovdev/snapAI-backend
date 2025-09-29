@@ -10,6 +10,7 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
+from django.core.validators import RegexValidator
 
 
 # ========= Custom User (email-only) =========
@@ -286,3 +287,25 @@ class Entitlement(models.Model):
 
     def __str__(self):
         return f"Entitlement({self.user.email}, active={self.is_active})"
+    
+    
+class Report(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="reports"
+    )
+    name = models.CharField(max_length=160)
+    phone_number = models.CharField(
+        max_length=32,
+        validators=[RegexValidator(r"^\+?\d{7,15}$",
+                   message="Phone must be in international format, e.g. +996XXXXXXXXX")]
+    )
+    comment = models.TextField(blank=True, default="")
+    photo = models.ImageField(upload_to="uploads/reports/", null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report({self.name}, {self.phone_number})"

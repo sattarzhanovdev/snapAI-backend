@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .views import ProfileViewSet, MealViewSet, PlanViewSet, RatingViewSet, AnalyzePhoto, StartSignupView, VerifySignupView, ResendOTPView
+from .views import ProfileViewSet, MealViewSet, PlanViewSet, RatingViewSet, AnalyzePhoto, StartSignupView, VerifySignupView, ResendOTPView, ReportViewSet
 from .views_auth_social import GoogleLoginView, AppleLoginView
 from .views_iap import IOSReceiptIngestView
 
@@ -22,5 +22,6 @@ urlpatterns = [
     path("auth/google/", GoogleLoginView.as_view(), name="auth-google"),
     path("auth/apple/", AppleLoginView.as_view(), name="auth-apple"),
     path("iap/apple/ingest/", IOSReceiptIngestView.as_view()),
+    path("reports/", ReportViewSet.as_view({"get": "list", "post": "create"}), name="reports"),
     path("", include(router.urls)),
 ]
