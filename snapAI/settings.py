@@ -73,7 +73,7 @@ WSGI_APPLICATION = "snapAI.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": BASE_DIR / "db" / "db.sqlite3",
     }
 }
 
@@ -110,6 +110,8 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if os.getenv("CORS_ALLOWED_ORIGINS") else []
 CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
+CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else []
+
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = os.getenv("TIME_ZONE", "UTC")
 USE_I18N = USE_TZ = True
@@ -130,3 +132,9 @@ else:
     # Dev: письма не отправляются, а печатаются в консоль/логи
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "dev@localhost")
+
+
+# --- SUPERUSER ---
+SUPERUSER_EMAIL = os.getenv('SUPERUSER_EMAIL', 'admin@example.com')
+SUPERUSER_PASSWORD = os.getenv('SUPERUSER_PASSWORD', 'Admin_333')
+
