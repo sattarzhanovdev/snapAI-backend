@@ -113,6 +113,29 @@ class MealViewSet(viewsets.ModelViewSet):
         ser.save()
         return Response(ser.data)
 
+    # ⚙️ НОВОЕ: частичное обновление ингредиентов и (опционально) макросов
+    @action(detail=True, methods=["patch"], url_path="ingredients")
+    def update_ingredients(self, request, pk=None):
+        meal = self.get_object()
+
+        ingredients = request.data.get("ingredients")
+        if ingredients is None:
+            raise ValidationError({"ingredients": "This field is required"})
+        if not isinstance(ingredients, list):
+            raise ValidationError({"ingredients": "Must be a list of strings"})
+
+        # Нормализуем строки и убираем пустые
+        normalized = [str(x).strip() for x in ingredients if str(x).strip()]
+        meal.ingredients = normalized
+
+        # Опционально можно сразу поправить калории/БЖУ/название, если пришли
+        for field in ("title", "calories", "protein_g", "fat_g", "carbs_g"):
+            if field in request.data:
+                setattr(meal, field, request.data[field])
+
+        meal.save()
+        return Response(MealSerializer(meal).data, status=200)
+
 
 # ================== RATINGS ==================
 
