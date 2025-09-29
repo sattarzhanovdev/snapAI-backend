@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API Test Console — snapaibackend.pythonanywhere.com</title>
+    <style>
+      :root {
+        --bg: #0b0b11;
+        --card: #181a22;
+        --muted: #aab1c3;
+        --txt: #eef1ff;
+        --accent: #7a7cff;
+        --ok: #2ecc71;
+        --err: #ff5c7a;
+        --warn: #f0b429;
+        --br: 16px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        background: linear-gradient(180deg, #0b0b11 0%, #10121a 100%);
+        color: var(--txt);
+      }
+      header {
+        padding: 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: clamp(18px, 3vw, 24px);
+        margin: 0;
+      }
+      .base-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      input[type="text"],
+      input[type="email"],
+      input[type="password"],
+      input[type="number"],
+      textarea,
+      select {
+        background: #0f1119;
+        border: 1px solid #26283a;
+        color: var(--txt);
+        padding: 10px 12px;
+        border-radius: 12px;
+        outline: none;
+        min-width: 0;
+      }
+      textarea {
+        width: 100%;
+        min-height: 80px;
+        resize: vertical;
+      }
+      button {
+        background: var(--accent);
+        border: 0;
+        color: white;
+        padding: 10px 14px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.ghost {
+        background: transparent;
+        border: 1px solid #33384f;
+      }
+      button.warn {
+        background: var(--warn);
+        color: #0b0b11;
+      }
+      button.ok {
+        background: var(--ok);
+      }
+      button.err {
+        background: var(--err);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+        padding: 0 24px 32px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid #23263a;
+        border-radius: var(--br);
+        padding: 16px;
+        box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25);
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin: 6px 0;
+        flex-wrap: wrap;
+      }
+      .row > * {
+        flex: 1 1 auto;
+      }
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .kvs {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+      .out {
+        background: #0f1119;
+        border: 1px dashed #2b2f47;
+        padding: 10px;
+        border-radius: 12px;
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+      .hl {
+        color: #c7cbff;
+      }
+      .token {
+        word-break: break-all;
+      }
+      .sep {
+        height: 1px;
+        background: #2b2f47;
+        margin: 12px 0;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #101427;
+        border: 1px solid #2b2f47;
+        color: #cdd6f4;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>API Test Console</h1>
+      <div class="tag">Base URL</div>
+      <div class="base-row">
+        <input
+          id="baseUrl"
+          type="text"
+          value="https://snapaibackend.pythonanywhere.com/api"
+          style="width: min(70vw, 520px)"
+        />
+        <button class="ghost" onclick="saveBase()">Сохранить</button>
+      </div>
+      <div class="row" style="width: 100%">
+        <input id="access" type="text" placeholder="Access JWT" class="token" />
+        <input
+          id="refresh"
+          type="text"
+          placeholder="Refresh JWT"
+          class="token"
+        />
+        <button class="ok" onclick="storeTokens()">Set tokens</button>
+        <button class="ghost" onclick="clearTokens()">Clear</button>
+      </div>
+      <div class="small" id="authState"></div>
+    </header>
+
+    <div class="grid">
+      <!-- Register Start -->
+      <section class="card">
+        <h2>1) Start signup (OTP)</h2>
+        <div class="kvs">
+          <label>Email</label>
+          <input id="r_email" type="email" placeholder="user@example.com" />
+          <label>Password</label>
+          <input id="r_password" type="password" placeholder="min 6 chars" />
+          <label>Locale (opt)</label>
+          <input id="r_locale" type="text" placeholder="ru|en" value="ru" />
+        </div>
+        <div class="row">
+          <button onclick="registerStart()">POST /auth/register/start/</button>
+        </div>
+        <div class="out" id="out_start"></div>
+      </section>
+
+      <!-- Verify -->
+      <section class="card">
+        <h2>2) Verify (create user + tokens)</h2>
+        <div class="kvs">
+          <label>session_id</label>
+          <input id="v_sid" type="text" placeholder="from step 1" />
+          <label>otp</label>
+          <input id="v_otp" type="text" placeholder="1234" />
+          <label>Password</label>
+          <input id="v_password" type="password" placeholder="same as step 1" />
+        </div>
+        <div class="row">
+          <button onclick="registerVerify()">
+            POST /auth/register/verify/
+          </button>
+        </div>
+        <div class="out" id="out_verify"></div>
+      </section>
+
+      <!-- Resend -->
+      <section class="card">
+        <h2>Resend OTP</h2>
+        <div class="kvs">
+          <label>session_id</label>
+          <input id="re_sid" type="text" placeholder="from step 1" />
+        </div>
+        <div class="row">
+          <button onclick="registerResend()">
+            POST /auth/register/resend/
+          </button>
+        </div>
+        <div class="out" id="out_resend"></div>
+      </section>
+
+      <!-- Profile (me) -->
+      <section class="card">
+        <h2>Profile — get / patch</h2>
+        <div class="row">
+          <button onclick="getProfile()">GET /profile/1/ (singleton)</button>
+          <button class="ghost" onclick="patchProfile()">
+            PATCH /profile/1/
+          </button>
+        </div>
+        <details>
+          <summary class="small">PATCH payload</summary>
+          <textarea id="patch_profile">
+{
+  "units": "metric",
+  "height_cm": 180,
+  "weight_kg": 75,
+  "activity": "moderate",
+  "goal": "lose_weight",
+  "desired_weight_kg": 70
+}</textarea
+          >
+        </details>
+        <div class="out" id="out_profile"></div>
+      </section>
+
+      <!-- Onboarding -->
+      <section class="card">
+        <h2>Onboarding</h2>
+        <div class="small">
+          POST /profile/onboarding/ (user берётся из токена)
+        </div>
+        <textarea id="onboarding_body">
+{
+  "gender": "male",
+  "units": "metric",
+  "height_cm": 180,
+  "weight_kg": 75,
+  "date_of_birth": "2001-01-01",
+  "activity": "moderate",
+  "goal": "lose_weight",
+  "desired_weight_kg": 70,
+  "allergies": ["peanuts"]
+}</textarea
+        >
+        <div class="row">
+          <button onclick="onboarding()">POST /profile/onboarding/</button>
+        </div>
+        <div class="out" id="out_onboarding"></div>
+      </section>
+
+      <!-- Generate Plan -->
+      <section class="card">
+        <h2>Generate plan</h2>
+        <div class="row">
+          <button onclick="generatePlan()">POST /profile/generate-plan/</button>
+          <button class="ghost" onclick="getPlans()">GET /plan/</button>
+        </div>
+        <div class="out" id="out_plan"></div>
+      </section>
+
+      <!-- Analyze Photo -->
+      <section class="card">
+        <h2>Analyze meal photo</h2>
+        <input id="meal_file" type="file" accept="image/*" />
+        <div class="row">
+          <button onclick="analyzePhoto()">POST /analyze/</button>
+          <button class="ghost" onclick="getMeals()">GET /meals/</button>
+        </div>
+        <div class="out" id="out_meal"></div>
+      </section>
+
+      <!-- Ratings -->
+      <section class="card">
+        <h2>App rating</h2>
+        <div class="kvs">
+          <label>Stars (1-5)</label>
+          <input id="rate_stars" type="number" min="1" max="5" value="5" />
+          <label>Comment</label>
+          <input id="rate_comment" type="text" placeholder="Nice app" />
+        </div>
+        <div class="row">
+          <button onclick="sendRating()">POST /ratings/</button>
+          <button class="ghost" onclick="getRatings()">GET /ratings/</button>
+        </div>
+        <div class="out" id="out_rating"></div>
+      </section>
+
+      <!-- JWT Refresh -->
+      <section class="card">
+        <h2>Refresh access</h2>
+        <div class="row">
+          <button onclick="refreshAccess()">POST /auth/refresh/</button>
+        </div>
+        <div class="out" id="out_refresh"></div>
+      </section>
+    </div>
+
+    <script>
+      // --- tiny state ---
+      const S = {
+        base:
+          localStorage.getItem("baseUrl") ||
+          document.getElementById("baseUrl").value,
+        access: localStorage.getItem("access") || "",
+        refresh: localStorage.getItem("refresh") || "",
+      };
+
+      document.getElementById("baseUrl").value = S.base;
+      document.getElementById("access").value = S.access;
+      document.getElementById("refresh").value = S.refresh;
+      renderAuth();
+
+      function saveBase() {
+        S.base = document
+          .getElementById("baseUrl")
+          .value.trim()
+          .replace(/\/$/, "");
+        localStorage.setItem("baseUrl", S.base);
+        toast("Base URL → " + S.base);
+      }
+      function storeTokens() {
+        S.access = document.getElementById("access").value.trim();
+        S.refresh = document.getElementById("refresh").value.trim();
+        localStorage.setItem("access", S.access);
+        localStorage.setItem("refresh", S.refresh);
+        renderAuth();
+        toast("Tokens set");
+      }
+      function clearTokens() {
+        S.access = S.refresh = "";
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+        document.getElementById("access").value = "";
+        document.getElementById("refresh").value = "";
+        renderAuth();
+        toast("Tokens cleared");
+      }
+      function renderAuth() {
+        const el = document.getElementById("authState");
+        el.textContent = S.access
+          ? "Authorized (access set)"
+          : "Not authorized";
+      }
+      function toast(msg) {
+        console.log("[UI]", msg);
+      }
+
+      // --- helpers ---
+      async function api(path, opts = {}) {
+        const url =
+          S.base.replace(/\/$/, "") + (path.startsWith("/") ? "" : "/") + path;
+        const headers = opts.headers || {};
+        if (!("Authorization" in headers) && S.access)
+          headers["Authorization"] = "Bearer " + S.access;
+        if (opts.json) {
+          headers["Content-Type"] = "application/json";
+          opts.body = JSON.stringify(opts.json);
+          delete opts.json;
+        }
+        const res = await fetch(url, { ...opts, headers });
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = await res.text();
+        }
+        return { ok: res.ok, status: res.status, data };
+      }
+      function show(id, payload) {
+        const el = document.getElementById(id);
+        el.textContent =
+          typeof payload === "string"
+            ? payload
+            : JSON.stringify(payload, null, 2);
+      }
+
+      // --- flows ---
+      async function registerStart() {
+        const email = document.getElementById("r_email").value.trim();
+        const password = document.getElementById("r_password").value;
+        const locale = document.getElementById("r_locale").value.trim();
+        const { ok, status, data } = await api("/auth/register/start/", {
+          method: "POST",
+          json: { email, password, locale },
+        });
+        show("out_start", { ok, status, data });
+        if (ok && data.session_id) {
+          document.getElementById("v_sid").value = data.session_id;
+          document.getElementById("re_sid").value = data.session_id;
+        }
+      }
+
+      async function registerVerify() {
+        const session_id = document.getElementById("v_sid").value.trim();
+        const otp = document.getElementById("v_otp").value.trim();
+        const password = document.getElementById("v_password").value;
+        const { ok, status, data } = await api("/auth/register/verify/", {
+          method: "POST",
+          json: { session_id, otp, password },
+        });
+        show("out_verify", { ok, status, data });
+        if (ok && data.access) {
+          document.getElementById("access").value = data.access;
+          document.getElementById("refresh").value = data.refresh || "";
+          storeTokens();
+        }
+      }
+
+      async function registerResend() {
+        const session_id = document.getElementById("re_sid").value.trim();
+        const { ok, status, data } = await api("/auth/register/resend/", {
+          method: "POST",
+          json: { session_id },
+        });
+        show("out_resend", { ok, status, data });
+      }
+
+      async function getProfile() {
+        const { ok, status, data } = await api("/profile/1/"); // singleton по твоей логике get_object()
+        show("out_profile", { ok, status, data });
+      }
+
+      async function patchProfile() {
+        let json;
+        try {
+          json = JSON.parse(document.getElementById("patch_profile").value);
+        } catch (e) {
+          return show("out_profile", {
+            ok: false,
+            status: 0,
+            error: "bad JSON",
+          });
+        }
+        const { ok, status, data } = await api("/profile/1/", {
+          method: "PATCH",
+          json,
+        });
+        show("out_profile", { ok, status, data });
+      }
+
+      async function onboarding() {
+        let json;
+        try {
+          json = JSON.parse(document.getElementById("onboarding_body").value);
+        } catch (e) {
+          return show("out_onboarding", {
+            ok: false,
+            status: 0,
+            error: "bad JSON",
+          });
+        }
+        const { ok, status, data } = await api("/profile/onboarding/", {
+          method: "POST",
+          json,
+        });
+        show("out_onboarding", { ok, status, data });
+      }
+
+      async function generatePlan() {
+        const { ok, status, data } = await api("/profile/generate-plan/", {
+          method: "POST",
+        });
+        show("out_plan", { ok, status, data });
+      }
+
+      async function getPlans() {
+        const { ok, status, data } = await api("/plan/");
+        show("out_plan", { ok, status, data });
+      }
+
+      async function analyzePhoto() {
+        const f = document.getElementById("meal_file").files[0];
+        if (!f)
+          return show("out_meal", {
+            ok: false,
+            status: 0,
+            error: "select file",
+          });
+        const fd = new FormData();
+        fd.append("image", f);
+        const { ok, status, data } = await api("/analyze/", {
+          method: "POST",
+          body: fd,
+          headers: {},
+        }); // headers пустые, fetch сам поставит boundary
+        show("out_meal", { ok, status, data });
+      }
+
+      async function getMeals() {
+        const { ok, status, data } = await api("/meals/");
+        show("out_meal", { ok, status, data });
+      }
+
+      async function sendRating() {
+        const stars = +document.getElementById("rate_stars").value;
+        const comment = document.getElementById("rate_comment").value;
+        const { ok, status, data } = await api("/ratings/", {
+          method: "POST",
+          json: { stars, comment },
+        });
+        show("out_rating", { ok, status, data });
+      }
+
+      async function getRatings() {
+        const { ok, status, data } = await api("/ratings/");
+        show("out_rating", { ok, status, data });
+      }
+
+      async function refreshAccess() {
+        if (!S.refresh)
+          return show("out_refresh", {
+            ok: false,
+            status: 0,
+            error: "no refresh set",
+          });
+        const { ok, status, data } = await api("/auth/refresh/", {
+          method: "POST",
+          json: { refresh: S.refresh },
+          headers: {},
+        });
+        show("out_refresh", { ok, status, data });
+        if (ok && data.access) {
+          document.getElementById("access").value = data.access;
+          storeTokens();
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -35,5 +35,6 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - media_volume:/app/media
       - static_volume:/app/static
+      - ../../index.html:/usr/share/nginx/html/index.html:ro
     depends_on:
       - backend
