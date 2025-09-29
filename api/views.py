@@ -67,11 +67,30 @@ class ProfileViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.
         return Response(NutritionPlanSerializer(plan).data)
 
 
-class PlanViewSet(viewsets.ReadOnlyModelViewSet):
+class PlanViewSet(viewsets.GenericViewSet):
+    """
+    /api/plan/        GET   -> вернуть текущий план пользователя (создать пустой, если нет)
+    /api/plan/        PATCH -> частично обновить поля плана пользователя
+    """
     serializer_class = NutritionPlanSerializer
     permission_classes = [permissions.IsAuthenticated]
-    def get_queryset(self):
-        return NutritionPlan.objects.filter(user=self.request.user)
+
+    def get_object(self):
+        plan, _ = NutritionPlan.objects.get_or_create(user=self.request.user)
+        return plan
+
+    @action(detail=False, methods=["get"], url_path="", url_name="get")
+    def get_plan(self, request):
+        plan = self.get_object()
+        return Response(self.get_serializer(plan).data, status=200)
+
+    @action(detail=False, methods=["patch"], url_path="", url_name="patch")
+    def patch_plan(self, request):
+        plan = self.get_object()
+        ser = self.get_serializer(plan, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data, status=200)
 
 
 # ================== MEALS ==================
