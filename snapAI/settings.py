@@ -101,7 +101,7 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "SnapAI API",
     "DESCRIPTION": "Документация API",
-    "VERSION": "1.0.0",
+    "VERSION": "1.0.1",
 }
 
 SIMPLE_JWT = {
