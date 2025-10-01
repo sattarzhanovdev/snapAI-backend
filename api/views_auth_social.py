@@ -75,9 +75,12 @@ class GoogleLoginView(APIView):
             detail = str(e) if settings.DEBUG else "Invalid Google token"
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
-def _b64url_sha256(s: str) -> str:
-    digest = hashlib.sha256(s.encode("utf-8")).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+def _sha256_hex(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+def _sha256_b64url(s: str) -> str:
+    d = hashlib.sha256(s.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(d).rstrip(b"=").decode("ascii")
 
 class AppleLoginView(APIView):
     permission_classes = [AllowAny]
@@ -86,39 +89,51 @@ class AppleLoginView(APIView):
         ser = SocialIDTokenSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
-
         raw_nonce = (request.data.get("nonce") or "").strip()
 
         aud = "com.adconcept.snapai.ios"
 
         try:
-            # Декод с проверкой подписи и iss, но без verify_aud,
-            # чтобы вернуть человекочитаемую ошибку, если aud не совпадёт.
+            # Верифицируем подпись и iss, но aud проверим вручную чтобы отдать понятную ошибку
             claims = verify_apple_id_token(id_token, aud, verify_aud_in_decode=False)
 
-            # 1) iss
+            # iss
             if claims.get("iss") != "https://appleid.apple.com":
                 raise ValueError(f"Invalid iss: {claims.get('iss')}")
 
-            # 2) aud: поддерживаем str/list
+            # aud
             token_aud = claims.get("aud")
             aud_ok = (token_aud == aud) if isinstance(token_aud, str) else (isinstance(token_aud, (list, tuple, set)) and aud in token_aud)
             if not aud_ok:
                 raise ValueError(f"aud mismatch: token aud={token_aud}, expected={aud}")
 
-            # 3) nonce (если клиент прислал rawNonce)
+            # nonce — примем и hex, и base64url
             if raw_nonce:
-                expected = _b64url_sha256(raw_nonce)
-                token_nonce = claims.get("nonce")
-                if token_nonce != expected:
-                    raise ValueError(f"nonce mismatch: token nonce={token_nonce}, expected={expected}")
+                token_nonce = claims.get("nonce") or ""
+                exp_hex = _sha256_hex(raw_nonce)
+                exp_b64 = _sha256_b64url(raw_nonce)
+                if token_nonce not in (exp_hex, exp_b64):
+                    raise ValueError(
+                        f"nonce mismatch: token nonce={token_nonce}, expected one of {{hex:{exp_hex}, b64url:{exp_b64}}}"
+                    )
 
-            # ...дальше создание/поиск пользователя и выдача JWT, как у тебя
+            # ... далее как у тебя: создаём/находим пользователя и отдаём JWT
             # email = (claims.get("email") or "").lower().strip()
             # sub = claims["sub"]
             # ...
 
+            return Response(issue_jwt(user), status=201 if created else 200)
+
+        except ExpiredSignatureError:
+            return Response({"detail": "Apple token expired"}, status=400)
+        except InvalidIssuerError:
+            return Response({"detail": "Invalid Apple token issuer"}, status=400)
+        except InvalidAudienceError as e:
+            return Response({"detail": f"aud mismatch: {e}"}, status=400)
+        except InvalidSignatureError:
+            return Response({"detail": "Invalid Apple token signature"}, status=400)
         except Exception as e:
             logger.exception("Apple login failed")
+            # В DEV лучше вернуть конкретику:
             detail = str(e) if settings.DEBUG else "Invalid Apple token"
-            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": detail}, status=400)
