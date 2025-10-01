@@ -82,42 +82,64 @@ class AppleLoginView(APIView):
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
 
-        aud = "com.adconcept.snapai.ios"
+        aud = "com.adconcept.snapai.ios"  # Apple client_id
         if not aud:
             msg = "Missing APPLE_CLIENT_ID in env"
             logger.error(msg)
             return Response({"detail": msg}, status=500 if settings.DEBUG else 400)
 
         try:
+            # Верификация токена через функцию из social_verify.py
             claims = verify_apple_id_token(id_token, aud)
+
+            # iss / sub
             iss = claims.get("iss")
-            sub = claims["sub"]
+            sub = claims.get("sub")
             if iss != "https://appleid.apple.com":
                 raise ValueError(f"Invalid iss: {iss}")
-            if claims.get("aud") != aud:
-                raise ValueError("aud mismatch")
 
+            # Проверка aud (строка или список)
+            aud_claim = claims.get("aud")
+            if isinstance(aud_claim, str):
+                aud_ok = (aud_claim == aud)
+            elif isinstance(aud_claim, (list, tuple, set)):
+                aud_ok = (aud in aud_claim)
+            else:
+                aud_ok = False
+
+            if not aud_ok:
+                raise ValueError(f"aud mismatch: token aud={aud_claim}, expected={aud}")
+
+            # email может быть пустым (только первый логин)
             email = (claims.get("email") or "").lower().strip()
 
+            # Создание или получение пользователя
             created = False
             if email:
                 user, created = User.objects.get_or_create(email=email)
             else:
                 user, created = User.objects.get_or_create(email=f"apple_{sub}@example.invalid")
 
+            # Обновление provider / provider_sub
             if hasattr(user, "provider") and hasattr(user, "provider_sub"):
                 to_update = []
                 if getattr(user, "provider", "") != "apple":
-                    user.provider = "apple"; to_update.append("provider")
+                    user.provider = "apple"
+                    to_update.append("provider")
                 if getattr(user, "provider_sub", "") != sub:
-                    user.provider_sub = sub; to_update.append("provider_sub")
+                    user.provider_sub = sub
+                    to_update.append("provider_sub")
                 if to_update:
                     user.save(update_fields=to_update)
 
+            # Логирование для DEBUG
             if settings.DEBUG:
-                logger.warning("Apple ok: sub=%s aud=%s iss=%s email=%s created=%s",
-                               sub, claims.get("aud"), iss, email, created)
+                logger.warning(
+                    "Apple ok: sub=%s aud=%s iss=%s email=%s created=%s",
+                    sub, aud_claim, iss, email, created
+                )
 
+            # Возврат JWT
             return Response(issue_jwt(user), status=201 if created else 200)
 
         except Exception as e:
