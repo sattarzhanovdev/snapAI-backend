@@ -82,7 +82,7 @@ class AppleLoginView(APIView):
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
 
-        aud = os.getenv("APPLE_CLIENT_ID")
+        aud = "com.adconcept.snapai.ios"
         if not aud:
             msg = "Missing APPLE_CLIENT_ID in env"
             logger.error(msg)

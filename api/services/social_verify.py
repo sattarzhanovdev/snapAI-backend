@@ -45,3 +45,5 @@ def verify_apple_id_token(identity_token: str, audience: str) -> dict:
         issuer=APPLE_ISS,
     )
     return claims
+
+
