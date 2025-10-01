@@ -76,6 +76,7 @@ class GoogleLoginView(APIView):
             detail = str(e) if settings.DEBUG else "Invalid Google token"
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
+
 def _sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
@@ -90,13 +91,13 @@ class AppleLoginView(APIView):
         ser = SocialIDTokenSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
-        raw_nonce = (request.data.get("nonce") or "").strip()
 
+        raw_nonce = (request.data.get("nonce") or "").strip()
         aud = "com.adconcept.snapai.ios"
 
         try:
-            # 1) Подпись + iss проверяем в verify_apple_id_token,
-            #    aud проверим вручную ради более понятной ошибки
+            # 1) Проверим подпись+issuer внутри verify_apple_id_token,
+            #    НО audience вручную, чтобы отдать понятную ошибку
             claims = verify_apple_id_token(id_token, aud, verify_aud_in_decode=False)
 
             # 2) iss
@@ -106,11 +107,13 @@ class AppleLoginView(APIView):
 
             # 3) aud (str или list)
             token_aud = claims.get("aud")
-            aud_ok = (token_aud == aud) if isinstance(token_aud, str) else (isinstance(token_aud, (list, tuple, set)) and aud in token_aud)
+            aud_ok = (token_aud == aud) if isinstance(token_aud, str) else (
+                isinstance(token_aud, (list, tuple, set)) and aud in token_aud
+            )
             if not aud_ok:
                 return Response({"detail": f"aud mismatch: token aud={token_aud}, expected={aud}"}, status=400)
 
-            # 4) nonce: примем hex или base64url (на клиенте лучше исправить на base64url)
+            # 4) nonce — примем и hex, и base64url
             if raw_nonce:
                 token_nonce = (claims.get("nonce") or "").strip()
                 exp_hex = _sha256_hex(raw_nonce)
@@ -123,16 +126,16 @@ class AppleLoginView(APIView):
                         "expected_b64url": exp_b64,
                     }, status=400)
 
-            # 5) user: создаём/находим и обновляем provider
+            # 5) user
             sub = claims.get("sub")
             if not sub:
                 return Response({"detail": "Missing sub in Apple token"}, status=400)
 
             email = (claims.get("email") or "").lower().strip()
+            created = False
             if email:
                 user, created = User.objects.get_or_create(email=email)
             else:
-                # первый логин без e-mail — технич адрес
                 user, created = User.objects.get_or_create(email=f"apple_{sub}@example.invalid")
 
             if hasattr(user, "provider") and hasattr(user, "provider_sub"):
@@ -156,5 +159,5 @@ class AppleLoginView(APIView):
             return Response({"detail": "Invalid Apple token signature"}, status=400)
         except Exception as e:
             logger.exception("Apple login failed")
-            detail = str(e) if settings.DEBUG else "Invalid Apple token"
-            return Response({"detail": detail}, status=400)
+            # На время отладки покажем точную причину:
+            return Response({"detail": f"{type(e).__name__}: {e}"}, status=400)
