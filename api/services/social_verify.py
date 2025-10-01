@@ -4,6 +4,7 @@ from google.auth.transport import requests as grequests
 
 import json, requests, jwt
 from jwt import algorithms
+from functools import lru_cache
 
 APPLE_ISS = "https://appleid.apple.com"
 APPLE_JWKS_URL = f"{APPLE_ISS}/auth/keys"
@@ -24,26 +25,65 @@ def verify_google_id_token(id_token: str, audience: str) -> dict:
     return info
 
 
-# ---------- Apple ----------
+@lru_cache(maxsize=1)
+def _get_apple_jwks():
+    resp = requests.get(APPLE_JWKS_URL, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    return {k["kid"]: k for k in data.get("keys", [])}
+
 def _get_apple_public_key(kid: str):
-    jwks = requests.get(APPLE_JWKS_URL, timeout=10).json()["keys"]
-    key = next(k for k in jwks if k["kid"] == kid)
+    jwks = _get_apple_jwks()
+    key = jwks.get(kid)
+    if not key:
+        # refresh once in case of rotation
+        _get_apple_jwks.cache_clear()
+        jwks = _get_apple_jwks()
+        key = jwks.get(kid)
+    if not key:
+        raise ValueError(f"Apple JWKS key not found for kid={kid}")
     return algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
 
-def verify_apple_id_token(identity_token: str, audience: str) -> dict:
+def verify_apple_id_token(identity_token: str, audience: str, *, verify_aud_in_decode=True) -> dict:
     """
-    Возвращает claims с полями: sub, email? (часто только в первый логин), email_verified, is_private_email.
-    Бросает Exception, если токен некорректен.
+    Returns claims if valid; raises ValueError with a clear message otherwise.
     """
-    header = jwt.get_unverified_header(identity_token)
-    pub_key = _get_apple_public_key(header["kid"])
-    claims = jwt.decode(
-        identity_token,
-        key=pub_key,
-        algorithms=["RS256"],
-        audience=audience,
-        issuer=APPLE_ISS,
-    )
+    try:
+        header = jwt.get_unverified_header(identity_token)
+    except Exception as e:
+        raise ValueError(f"Invalid JWT header: {e}")
+
+    kid = header.get("kid")
+    if not kid:
+        raise ValueError("Missing kid in Apple token header")
+
+    pub_key = _get_apple_public_key(kid)
+
+    # Allow slight clock skew (e.g., 5 minutes)
+    options = {
+        "require": ["iss", "sub", "aud", "exp", "iat"],
+        "verify_aud": verify_aud_in_decode,  # we can also turn this off and check manually
+    }
+
+    try:
+        claims = jwt.decode(
+            identity_token,
+            key=pub_key,
+            algorithms=["RS256"],
+            audience=[audience] if verify_aud_in_decode else None,
+            issuer=APPLE_ISS,
+            options=options,
+            leeway=300,  # 5 minutes
+        )
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Apple token expired")
+    except jwt.InvalidIssuerError:
+        raise ValueError("Invalid iss (issuer) for Apple token")
+    except jwt.InvalidAudienceError as e:
+        raise ValueError(f"aud mismatch: {e}")
+    except jwt.InvalidSignatureError:
+        raise ValueError("Invalid Apple token signature")
+    except Exception as e:
+        raise ValueError(f"Apple token decode error: {e}")
+
     return claims
-
-

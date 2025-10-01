@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import SocialIDTokenSerializer
 from .services.social_verify import verify_google_id_token, verify_apple_id_token
+import base64, hashlib
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -82,23 +83,22 @@ class AppleLoginView(APIView):
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
 
-        aud = "com.adconcept.snapai.ios"  # Apple client_id
-        if not aud:
-            msg = "Missing APPLE_CLIENT_ID in env"
-            logger.error(msg)
-            return Response({"detail": msg}, status=500 if settings.DEBUG else 400)
+        # Optional: capture nonce from client to verify
+        raw_nonce = (request.data.get("nonce") or "").strip()
+        # If client also sent a hex sha256, capture it for debugging
+        raw_nonce_sha256 = (request.data.get("nonce_sha256") or "").strip()
+
+        aud = "com.adconcept.snapai.ios"  # Bundle ID for native app
 
         try:
-            # Верификация токена через функцию из social_verify.py
-            claims = verify_apple_id_token(id_token, aud)
+            # Decode with issuer + signature checks, but defer aud check for nicer error
+            claims = verify_apple_id_token(id_token, aud, verify_aud_in_decode=False)
 
-            # iss / sub
             iss = claims.get("iss")
-            sub = claims.get("sub")
             if iss != "https://appleid.apple.com":
                 raise ValueError(f"Invalid iss: {iss}")
 
-            # Проверка aud (строка или список)
+            # AUD check supports str or list
             aud_claim = claims.get("aud")
             if isinstance(aud_claim, str):
                 aud_ok = (aud_claim == aud)
@@ -106,40 +106,40 @@ class AppleLoginView(APIView):
                 aud_ok = (aud in aud_claim)
             else:
                 aud_ok = False
-
             if not aud_ok:
                 raise ValueError(f"aud mismatch: token aud={aud_claim}, expected={aud}")
 
-            # email может быть пустым (только первый логин)
-            email = (claims.get("email") or "").lower().strip()
+            # Nonce verification (recommended)
+            if raw_nonce:
+                hashed = hashlib.sha256(raw_nonce.encode("utf-8")).digest()
+                # base64url without padding
+                expected_nonce = base64.urlsafe_b64encode(hashed).rstrip(b"=").decode("ascii")
+                token_nonce = claims.get("nonce")
+                if token_nonce != expected_nonce:
+                    raise ValueError(
+                        f"nonce mismatch: token nonce={token_nonce} "
+                        f"expected(base64url(sha256(nonce)))={expected_nonce} "
+                        f"(client sent hex? {bool(raw_nonce_sha256)})"
+                    )
 
-            # Создание или получение пользователя
+            # Proceed to user creation…
+            email = (claims.get("email") or "").lower().strip()
+            sub = claims.get("sub")
             created = False
             if email:
                 user, created = User.objects.get_or_create(email=email)
             else:
                 user, created = User.objects.get_or_create(email=f"apple_{sub}@example.invalid")
 
-            # Обновление provider / provider_sub
             if hasattr(user, "provider") and hasattr(user, "provider_sub"):
                 to_update = []
                 if getattr(user, "provider", "") != "apple":
-                    user.provider = "apple"
-                    to_update.append("provider")
+                    user.provider = "apple"; to_update.append("provider")
                 if getattr(user, "provider_sub", "") != sub:
-                    user.provider_sub = sub
-                    to_update.append("provider_sub")
+                    user.provider_sub = sub; to_update.append("provider_sub")
                 if to_update:
                     user.save(update_fields=to_update)
 
-            # Логирование для DEBUG
-            if settings.DEBUG:
-                logger.warning(
-                    "Apple ok: sub=%s aud=%s iss=%s email=%s created=%s",
-                    sub, aud_claim, iss, email, created
-                )
-
-            # Возврат JWT
             return Response(issue_jwt(user), status=201 if created else 200)
 
         except Exception as e:
