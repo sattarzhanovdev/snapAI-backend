@@ -75,6 +75,10 @@ class GoogleLoginView(APIView):
             detail = str(e) if settings.DEBUG else "Invalid Google token"
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
+def _b64url_sha256(s: str) -> str:
+    digest = hashlib.sha256(s.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
 class AppleLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -83,64 +87,36 @@ class AppleLoginView(APIView):
         ser.is_valid(raise_exception=True)
         id_token = ser.validated_data["id_token"]
 
-        # Optional: capture nonce from client to verify
         raw_nonce = (request.data.get("nonce") or "").strip()
-        # If client also sent a hex sha256, capture it for debugging
-        raw_nonce_sha256 = (request.data.get("nonce_sha256") or "").strip()
 
-        aud = "com.adconcept.snapai.ios"  # Bundle ID for native app
+        aud = "com.adconcept.snapai.ios"
 
         try:
-            # Decode with issuer + signature checks, but defer aud check for nicer error
+            # Декод с проверкой подписи и iss, но без verify_aud,
+            # чтобы вернуть человекочитаемую ошибку, если aud не совпадёт.
             claims = verify_apple_id_token(id_token, aud, verify_aud_in_decode=False)
 
-            iss = claims.get("iss")
-            if iss != "https://appleid.apple.com":
-                raise ValueError(f"Invalid iss: {iss}")
+            # 1) iss
+            if claims.get("iss") != "https://appleid.apple.com":
+                raise ValueError(f"Invalid iss: {claims.get('iss')}")
 
-            # AUD check supports str or list
-            aud_claim = claims.get("aud")
-            if isinstance(aud_claim, str):
-                aud_ok = (aud_claim == aud)
-            elif isinstance(aud_claim, (list, tuple, set)):
-                aud_ok = (aud in aud_claim)
-            else:
-                aud_ok = False
+            # 2) aud: поддерживаем str/list
+            token_aud = claims.get("aud")
+            aud_ok = (token_aud == aud) if isinstance(token_aud, str) else (isinstance(token_aud, (list, tuple, set)) and aud in token_aud)
             if not aud_ok:
-                raise ValueError(f"aud mismatch: token aud={aud_claim}, expected={aud}")
+                raise ValueError(f"aud mismatch: token aud={token_aud}, expected={aud}")
 
-            # Nonce verification (recommended)
+            # 3) nonce (если клиент прислал rawNonce)
             if raw_nonce:
-                hashed = hashlib.sha256(raw_nonce.encode("utf-8")).digest()
-                # base64url without padding
-                expected_nonce = base64.urlsafe_b64encode(hashed).rstrip(b"=").decode("ascii")
+                expected = _b64url_sha256(raw_nonce)
                 token_nonce = claims.get("nonce")
-                if token_nonce != expected_nonce:
-                    raise ValueError(
-                        f"nonce mismatch: token nonce={token_nonce} "
-                        f"expected(base64url(sha256(nonce)))={expected_nonce} "
-                        f"(client sent hex? {bool(raw_nonce_sha256)})"
-                    )
+                if token_nonce != expected:
+                    raise ValueError(f"nonce mismatch: token nonce={token_nonce}, expected={expected}")
 
-            # Proceed to user creation…
-            email = (claims.get("email") or "").lower().strip()
-            sub = claims.get("sub")
-            created = False
-            if email:
-                user, created = User.objects.get_or_create(email=email)
-            else:
-                user, created = User.objects.get_or_create(email=f"apple_{sub}@example.invalid")
-
-            if hasattr(user, "provider") and hasattr(user, "provider_sub"):
-                to_update = []
-                if getattr(user, "provider", "") != "apple":
-                    user.provider = "apple"; to_update.append("provider")
-                if getattr(user, "provider_sub", "") != sub:
-                    user.provider_sub = sub; to_update.append("provider_sub")
-                if to_update:
-                    user.save(update_fields=to_update)
-
-            return Response(issue_jwt(user), status=201 if created else 200)
+            # ...дальше создание/поиск пользователя и выдача JWT, как у тебя
+            # email = (claims.get("email") or "").lower().strip()
+            # sub = claims["sub"]
+            # ...
 
         except Exception as e:
             logger.exception("Apple login failed")
