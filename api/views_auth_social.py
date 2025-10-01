@@ -10,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import SocialIDTokenSerializer
 from .services.social_verify import verify_google_id_token, verify_apple_id_token
 import base64, hashlib
+from jwt import ExpiredSignatureError, InvalidIssuerError, InvalidAudienceError, InvalidSignatureError
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -94,33 +95,54 @@ class AppleLoginView(APIView):
         aud = "com.adconcept.snapai.ios"
 
         try:
-            # Верифицируем подпись и iss, но aud проверим вручную чтобы отдать понятную ошибку
+            # 1) Подпись + iss проверяем в verify_apple_id_token,
+            #    aud проверим вручную ради более понятной ошибки
             claims = verify_apple_id_token(id_token, aud, verify_aud_in_decode=False)
 
-            # iss
-            if claims.get("iss") != "https://appleid.apple.com":
-                raise ValueError(f"Invalid iss: {claims.get('iss')}")
+            # 2) iss
+            iss = claims.get("iss")
+            if iss != "https://appleid.apple.com":
+                return Response({"detail": f"Invalid issuer: {iss}"}, status=400)
 
-            # aud
+            # 3) aud (str или list)
             token_aud = claims.get("aud")
             aud_ok = (token_aud == aud) if isinstance(token_aud, str) else (isinstance(token_aud, (list, tuple, set)) and aud in token_aud)
             if not aud_ok:
-                raise ValueError(f"aud mismatch: token aud={token_aud}, expected={aud}")
+                return Response({"detail": f"aud mismatch: token aud={token_aud}, expected={aud}"}, status=400)
 
-            # nonce — примем и hex, и base64url
+            # 4) nonce: примем hex или base64url (на клиенте лучше исправить на base64url)
             if raw_nonce:
-                token_nonce = claims.get("nonce") or ""
+                token_nonce = (claims.get("nonce") or "").strip()
                 exp_hex = _sha256_hex(raw_nonce)
                 exp_b64 = _sha256_b64url(raw_nonce)
                 if token_nonce not in (exp_hex, exp_b64):
-                    raise ValueError(
-                        f"nonce mismatch: token nonce={token_nonce}, expected one of {{hex:{exp_hex}, b64url:{exp_b64}}}"
-                    )
+                    return Response({
+                        "detail": "nonce mismatch",
+                        "token_nonce": token_nonce,
+                        "expected_hex": exp_hex,
+                        "expected_b64url": exp_b64,
+                    }, status=400)
 
-            # ... далее как у тебя: создаём/находим пользователя и отдаём JWT
-            # email = (claims.get("email") or "").lower().strip()
-            # sub = claims["sub"]
-            # ...
+            # 5) user: создаём/находим и обновляем provider
+            sub = claims.get("sub")
+            if not sub:
+                return Response({"detail": "Missing sub in Apple token"}, status=400)
+
+            email = (claims.get("email") or "").lower().strip()
+            if email:
+                user, created = User.objects.get_or_create(email=email)
+            else:
+                # первый логин без e-mail — технич адрес
+                user, created = User.objects.get_or_create(email=f"apple_{sub}@example.invalid")
+
+            if hasattr(user, "provider") and hasattr(user, "provider_sub"):
+                to_update = []
+                if getattr(user, "provider", "") != "apple":
+                    user.provider = "apple"; to_update.append("provider")
+                if getattr(user, "provider_sub", "") != sub:
+                    user.provider_sub = sub; to_update.append("provider_sub")
+                if to_update:
+                    user.save(update_fields=to_update)
 
             return Response(issue_jwt(user), status=201 if created else 200)
 
@@ -134,6 +156,5 @@ class AppleLoginView(APIView):
             return Response({"detail": "Invalid Apple token signature"}, status=400)
         except Exception as e:
             logger.exception("Apple login failed")
-            # В DEV лучше вернуть конкретику:
             detail = str(e) if settings.DEBUG else "Invalid Apple token"
             return Response({"detail": detail}, status=400)
