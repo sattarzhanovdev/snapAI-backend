@@ -10,6 +10,9 @@ volumes:
 services:
   backend:
     container_name: backend
+    mem_limit: 1g
+    cpus: 0.5
+
     build:
       context: ../../
       dockerfile: Dockerfile
@@ -17,16 +20,17 @@ services:
       - media_volume:/app/media
       - static_volume:/app/static
       - sqlite_volume:/app/db
-    expose:
-      - 8000
-
+    ports:
+      - "8000:8000"
     networks:
       - internal
+    restart: unless-stopped
 
   nginx:
     image: nginx:latest
-    networks:
-      - internal
+    mem_limit: 1g
+    cpus: 0.5
+
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - media_volume:/app/media
@@ -36,4 +40,6 @@ services:
       - backend
     ports:
       - "80:80"
-
+    networks:
+      - internal
+    restart: unless-stopped

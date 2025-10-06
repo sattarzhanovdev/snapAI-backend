@@ -13,6 +13,9 @@ services:
     build:
       context: ../../
       dockerfile: Dockerfile
+    mem_limit: 1g
+    cpus: 0.5
+
     volumes:
       - media_volume:/app/media
       - static_volume:/app/static
@@ -21,10 +24,14 @@ services:
       - 8000
     networks:
       - internal
+    restart: unless-stopped
     env_file: /etc/snap-ai/.env
 
   nginx:
     image: nginx:latest
+    mem_limit: 512M
+    cpus: 0.2
+
     networks:
       - internal
     ports:
@@ -38,3 +45,4 @@ services:
       - ../../index.html:/usr/share/nginx/html/index.html:ro
     depends_on:
       - backend
+    restart: unless-stopped
