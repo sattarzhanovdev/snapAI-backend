@@ -91,5 +91,5 @@ class IOSReceiptInSerializer(serializers.Serializer):
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
-        fields = ("id", "user", "name", "phone_number", "comment", "photo", "created_at")
+        fields = ("id", "user", "name", "comment", "photo", "created_at")
         read_only_fields = ("id", "user", "created_at")
