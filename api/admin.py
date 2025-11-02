@@ -72,7 +72,7 @@ class EntitlementAdmin(admin.ModelAdmin):
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "phone_number", "user", "created_at")
+    list_display = ("id", "name", "user", "created_at")
     list_filter = ("created_at",)
-    search_fields = ("name", "phone_number", "comment", "user__email")
+    search_fields = ("name", "comment", "user__email")
     readonly_fields = ("created_at",)

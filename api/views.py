@@ -72,10 +72,6 @@ class ProfileViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.
 
 
 class PlanViewSet(viewsets.GenericViewSet):
-    """
-    /api/plan/        GET   -> вернуть текущий план пользователя (создать пустой, если нет)
-    /api/plan/        PATCH -> частично обновить поля плана пользователя
-    """
     serializer_class = NutritionPlanSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -83,18 +79,27 @@ class PlanViewSet(viewsets.GenericViewSet):
         plan, _ = NutritionPlan.objects.get_or_create(user=self.request.user)
         return plan
 
+    def create(self, request):
+        # удалить старый план (если нужен только один)
+        NutritionPlan.objects.filter(user=request.user).delete()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=["get"], url_path="", url_name="get")
     def get_plan(self, request):
         plan = self.get_object()
-        return Response(self.get_serializer(plan).data, status=200)
+        return Response(self.get_serializer(plan).data)
 
     @action(detail=False, methods=["patch"], url_path="", url_name="patch")
     def patch_plan(self, request):
         plan = self.get_object()
-        ser = self.get_serializer(plan, data=request.data, partial=True)
-        ser.is_valid(raise_exception=True)
-        ser.save()
-        return Response(ser.data, status=200)
+        serializer = self.get_serializer(plan, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
 
 
 # ================== MEALS ==================
