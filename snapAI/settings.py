@@ -120,7 +120,7 @@ TIME_ZONE = os.getenv("TIME_ZONE", "UTC")
 USE_I18N = USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-DEBUG = os.getenv("DEBUG", "True") == "True"
+DEBUG = True
 
 # --- Email ---
 if os.getenv("EMAIL_BACKEND", "").lower() == "smtp":
