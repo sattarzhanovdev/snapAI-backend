@@ -113,7 +113,12 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if os.getenv("CORS_ALLOWED_ORIGINS") else []
 CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else []
+CSRF_TRUSTED_ORIGINS = [
+    "https://snap-ai-app.com",
+    "https://www.snap-ai-app.com",  # если есть поддомен
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
 
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = os.getenv("TIME_ZONE", "UTC")
