@@ -128,7 +128,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 DEBUG = True
 
 # --- Email ---
-if os.getenv("EMAIL_BACKEND", "").lower() == "smtp":
+backend_env = os.getenv("EMAIL_BACKEND", "").lower()
+
+if "smtp" in backend_env:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
     EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
@@ -137,7 +139,6 @@ if os.getenv("EMAIL_BACKEND", "").lower() == "smtp":
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 else:
-    # Dev: письма не отправляются, а печатаются в консоль/логи
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "dev@localhost")
 
